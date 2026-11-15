@@ -89,10 +89,10 @@ function ocard(o,i,m){
   const cell=x=>`<figure class="pc ${x.cat=='Vestido'?'tall':''}"><img src="${x.img}" alt=""><figcaption>${x.cat} · ${x.color}</figcaption></figure>`;
   const ord=(a,b)=>CATS.indexOf(a.cat)-CATS.indexOf(b.cat);
   const L=its.filter(x=>['Top','Parte inferior','Vestido','Abrigo'].includes(x.cat)).sort(ord),Rt=its.filter(x=>['Zapatos','Bolso','Accesorio'].includes(x.cat)).sort(ord);
-  return`<div class="card anim" style="--d:${i*90}ms"><div class="row" style="justify-content:space-between"><b>${m=='r'?`Opción ${i+1}`:esc(o.occ)}</b><span class="score">${o.sc}% compatible</span></div>
+  return`<div class="card anim" style="--d:${i*90}ms"><div class="row" style="justify-content:space-between"><b>${m=='r'?(o.top?'✨ Elección de la IA':`Opción ${i+1}`):esc(o.occ)}</b><span class="score">${o.sc}% compatible</span></div>
   <div class="flat">${L.length?`<div class="col">${L.map(cell).join('')}</div>`:''}${Rt.length?`<div class="col">${Rt.map(cell).join('')}</div>`:''}</div>
   <div class="tag">${esc(o.occ)}${o.date?' · '+o.date:''}</div>
-  <p style="margin:6px 0 12px;font-size:14px"><b>Por qué funciona:</b> ${esc(o.why.join('; '))}.</p>
+  <p style="margin:6px 0 12px;font-size:14px"><b>Por qué funciona:</b> ${o.ai?esc(o.ai):esc(o.why.join('; '))+'.'}</p>
   <div class="row">${m=='r'?`<button class="btn s" data-a="fav" data-v="${i}">${isFav?'💗 Guardado':'🤍 Favorito'}</button><button class="btn s" data-a="use" data-v="${i}">✅ Me lo pongo</button>`:m=='f'?`<button class="btn s" data-a="unfav" data-v="${i}">Quitar</button>`:''}</div></div>`;
 }
 const V={
@@ -108,6 +108,7 @@ inspo(){
     <ul class="p"><li><b>Arriba:</b> ${i.top}</li>${i.bot=='Vestido de una pieza'?'':`<li><b>Abajo:</b> ${i.bot}</li>`}<li><b>Zapatos:</b> ${i.sh}</li><li><b>Accesorios:</b> ${i.ac}</li></ul>
     <p class="tag" style="margin:0">Funciona porque la paleta (${i.cols.join(', ').toLowerCase()}) es coherente y su formalidad encaja con ${R.occ.toLowerCase()}.</p></div>`).join('');
     h+=`<h2>👗 Con tu armario</h2>`;
+    if(R.outs.length>1)h+='<button class="btn w" data-a="ai">✨ Elegir con IA</button>';
     if(R.need)h+=`<div class="card empty">${R.need}</div>`;
     else h+=R.outs.map((o,i)=>ocard(o,i,'r')).join('');
   }
@@ -167,6 +168,26 @@ const ACCESS_HASH='5129ee5032f29883863a83e5e328e6181ea2342b95ad299bb87859668637f
 async function sha(t){return[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(t)))].map(b=>b.toString(16).padStart(2,'0')).join('')}
 function gate(){$('#nav').innerHTML='';$('#app').innerHTML=`<div class="card" style="margin-top:18vh;text-align:center"><h1>Outfit <span>uwu</span></h1><p class="sub">Escribe tu código</p><input type="password" id="code" placeholder="Código"><button class="btn w" style="margin-top:10px" data-a="enter">Entrar</button></div>`}
 
+/* ---------- IA (Gemini, plan gratuito) ----------
+   Pega tu clave en GEMINI_KEY. Restríngela a tu dominio en Google Cloud (HTTP referrers).
+   Si el modelo cambia, revisa el nombre vigente en aistudio.google.com y actualiza AI_MODEL. */
+const GEMINI_KEY='',AI_MODEL='gemini-2.5-flash';
+async function thumb(u){const im=new Image();im.src=u;await im.decode();const k=Math.min(1,200/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=im.width*k|0;c.height=im.height*k|0;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(im,0,0,c.width,c.height);return c.toDataURL('image/jpeg',.7).split(',')[1]}
+async function aiPick(btn){
+  const key=GEMINI_KEY||localStorage.getItem('ouwu_key');if(!key){toast('Falta la clave de Gemini en app.js');return}
+  btn.disabled=true;btn.textContent='Pensando...';
+  try{
+    const parts=[{text:`Ocasión: ${R.occ}. Estilo pedido: ${F.sty||'ninguno'}. Clima: ${W&&W.max!=null?`${W.min}-${W.max}°C, lluvia ${W.rain}%`:'desconocido'}. Perfil: estilos ${S.p.styles.join(', ')||'-'}; colores favoritos ${S.p.colors.join(', ')||'-'}; evita ${S.p.avoid.join(', ')||'-'}.`}];
+    for(const [i,o] of R.outs.entries()){parts.push({text:`Outfit ${i}:`});for(const id of o.ids){const x=S.items.find(y=>y.id==id);if(x)parts.push({text:`${x.cat} ${x.color}, ${FN[x.form]}`},{inline_data:{mime_type:'image/jpeg',data:await thumb(x.img)}})}}
+    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${AI_MODEL}:generateContent`,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify({systemInstruction:{parts:[{text:'Eres una estilista de moda amable. Elige el mejor outfit según armonía de color, estilo, ocasión, clima y gustos del perfil. Responde SOLO JSON: {"ranking":[índices de los outfits de mejor a peor],"explicaciones":[una frase en español por cada outfit, en el orden del ranking, tono cálido, máximo 40 palabras]}'}]},contents:[{role:'user',parts}],generationConfig:{responseMimeType:'application/json'}})});
+    if(!r.ok)throw 0;
+    const j=JSON.parse((await r.json()).candidates[0].content.parts[0].text),n=R.outs.length,seen=new Set(),rk=j.ranking.filter(i=>Number.isInteger(i)&&i>=0&&i<n&&!seen.has(i)&&seen.add(i));
+    if(!rk.length)throw 0;
+    const old=R.outs;R.outs=rk.map((i,p)=>({...old[i],ai:j.explicaciones[p],top:p==0}));
+    old.forEach((o,i)=>{if(!seen.has(i))R.outs.push(o)});
+  }catch(e){toast('Usé el ranking básico')}
+  render()}
+
 /* ---------- Eventos ---------- */
 document.addEventListener('click',e=>{
   const el=e.target.closest('[data-a]');if(!el)return;const a=el.dataset.a,v=el.dataset.v;
@@ -186,6 +207,7 @@ document.addEventListener('click',e=>{
   else if(a=='fav'){const o=R.outs[v],k=o.ids.join(),i=S.favs.findIndex(f=>f.ids.join()==k);if(i<0){S.favs.unshift({...o});toast('Guardado en favoritos 💗')}else S.favs.splice(i,1);save()}
   else if(a=='unfav'){S.favs.splice(v,1);save()}
   else if(a=='use'){S.hist.unshift({...R.outs[v],date:new Date().toLocaleDateString('es')});S.hist=S.hist.slice(0,40);save();toast('Agregado al historial ✅')}
+  else if(a=='ai'){aiPick(el);return}
   else if(a=='exp'){const u=URL.createObjectURL(new Blob([JSON.stringify(S)],{type:'application/json'})),l=document.createElement('a');l.href=u;l.download='outfit-uwu-respaldo.json';l.click();URL.revokeObjectURL(u);toast('Respaldo descargado');return}
   else if(a=='nobg'){nobg(v,el);return}
   else if(a=='enter'){sha($('#code').value).then(h=>{if(h==ACCESS_HASH){localStorage.setItem('ouwu_ok',h);render()}else toast('Código incorrecto')});return}

@@ -22,3 +22,4 @@ Más IDEAS por ocasión, clima del día, quitar fondo a fotos, sync en la nube, 
 - `nobg()` quita fondo con @imgly (import dinámico). Respaldo JSON en Perfil.
 - Código de acceso (`ACCESS_HASH`, por defecto `outfituwu`): barrera ligera.
 - IDEAS = base + `MORE`; se muestran las 3 mejores.
+- `aiPick()` reordena R.outs con Gemini (GEMINI_KEY, AI_MODEL); si falla, queda el ranking por reglas.
